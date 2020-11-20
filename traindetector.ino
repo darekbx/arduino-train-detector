@@ -67,7 +67,7 @@ void setup()
   }
 
   if (serialEnabled) {
-    DigiKeyboard.delay(3000);
+    DigiKeyboard.delay(1000);
     DigiKeyboard.sendKeyStroke(0);
   }
 
@@ -85,7 +85,6 @@ void setup()
       printMemoryStatus();
     }
   }
-  isReadOnly = false;
 }
 
 void loop()
