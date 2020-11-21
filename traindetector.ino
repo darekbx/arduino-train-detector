@@ -10,19 +10,21 @@
    1 - Build in led used to notify state (blinks with 60s interval).
        - When memory is full or board is in readonly mode, the led is turned permamently on.
    2 - Sensor pin (Grove SW-420).
-   5 - Readonly switch (when is in HIGHT state, then data is not collected).
+   0 - Readonly switch (when is in HIGHT state, then data is not collected).
 
 */
 #define kbd_en_us
 #include <EEPROM.h>
 #include <DigiKeyboard.h>
 
-#define serialEnabled true
+#define clearMemory false
+#define serialEnabled false
+
 #define second 1000
 #define hour 60 * 60 * 1000
 #define ledPin 1
 #define sensorPin 2
-#define readOnlySwitch 5
+#define readOnlySwitch 0
 #define threadDelay 50                                  // Main loop delay
 #define blinkInterval 60                                // Led blink interval in seconds
 #define eventsDelay (second / threadDelay) * 60         // Delay between events, 10 seconds
@@ -49,42 +51,54 @@ void setup()
   pinMode(sensorPin, INPUT);
   pinMode(ledPin, OUTPUT);
 
-  //clearMemory();
+  if (clearMemory) {
+    eraseEEPROM();
+  }
 
   EEPROM.begin();
   memorySize = EEPROM.length();
 
-  eventAddress = readLong(eventIndexAddress);
-  if (eventAddress <= 0) {
-    writeLong(eventIndexAddress, eventAddress);
-    eventAddress = eventIndexAddress;
-  }
-
-  secondsCounter = readLong(secondsCounterAddress);
-  if (secondsCounter <= 0) {
-    writeLong(secondsCounterAddress, 0);
-    secondsCounter = 0;
-  }
+  initializeEventAddress();
+  initialzieSecondsCounter();
 
   if (serialEnabled) {
     DigiKeyboard.delay(1000);
     DigiKeyboard.sendKeyStroke(0);
   }
-
+  
   if (digitalRead(readOnlySwitch) == HIGH) {
     isReadOnly = true;
-
     if (serialEnabled) {
-      DigiKeyboard.println("TRAIN DETECTOR");
-      DigiKeyboard.print("Memory size: ");
-      DigiKeyboard.println(memorySize);
-      DigiKeyboard.print("Actual timestamp: ");
-      DigiKeyboard.println(secondsCounter);
-      DigiKeyboard.print("Actual event address: ");
-      DigiKeyboard.println(eventAddress);
-      printMemoryStatus();
+      printStatus();
     }
   }
+}
+
+void initializeEventAddress() {
+  eventAddress = readLong(eventIndexAddress);
+  if (eventAddress <= 0) {
+    writeLong(eventIndexAddress, eventAddress);
+    eventAddress = eventIndexAddress;
+  }
+}
+
+void initialzieSecondsCounter() {
+  secondsCounter = readLong(secondsCounterAddress);
+  if (secondsCounter <= 0) {
+    writeLong(secondsCounterAddress, 0);
+    secondsCounter = 0;
+  }
+}
+
+void printStatus() {
+  DigiKeyboard.println("TRAIN DETECTOR");
+  DigiKeyboard.print("Memory size: ");
+  DigiKeyboard.println(memorySize);
+  DigiKeyboard.print("Actual timestamp: ");
+  DigiKeyboard.println(secondsCounter);
+  DigiKeyboard.print("Actual event address: ");
+  DigiKeyboard.println(eventAddress);
+  printEEPROM();
 }
 
 void loop()
@@ -92,8 +106,8 @@ void loop()
   if (isReadOnly) {
     if (serialEnabled) {
       DigiKeyboard.println("READ ONLY MODE");
-      digitalWrite(ledPin, HIGH);
     }
+    digitalWrite(ledPin, HIGH);
     delay(hour);
     return;
   }
@@ -101,8 +115,8 @@ void loop()
   if (isMemoryFull()) {
     if (serialEnabled) {
       DigiKeyboard.println("MEMORY IS FULL!");
-      digitalWrite(ledPin, HIGH);
     }
+    digitalWrite(ledPin, HIGH);
     delay(hour);
     return;
   }
@@ -120,7 +134,7 @@ boolean isMemoryFull() {
 }
 
 void handleSensor() {
-  if (!hasEvent && digitalRead(sensorPin) == HIGH) {
+  if (!hasEvent && digitalRead(sensorPin) == LOW) {
     hasEvent = true;
     eventTime = 0;
 
@@ -173,13 +187,13 @@ void handleStatusLed() {
   }
 }
 
-void clearMemory() {
+void eraseEEPROM() {
   for (int i = 0; i < EEPROM.length(); i++) {
     EEPROM.write(i, 0);
   }
 }
 
-void printMemoryStatus() {
+void printEEPROM() {
   Serial.println("Memory dump:");
   int zeroCount = 0;
   for (long i = 0; i < EEPROM.length(); i += 4) {
