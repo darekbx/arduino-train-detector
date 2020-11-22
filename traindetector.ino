@@ -4,7 +4,7 @@
    Project uses vibration sensor to detect if train is passing.
    Box with board, battery and sensor is placed on the rail with magnets.
 
-   Events will be saved in board internal EEPROM memory, unitil is full.
+   Events will be saved in board internal EEPROM memory, until is full.
 
    Pinouts:
    1 - Build in led used to notify state (blinks with 60s interval).
