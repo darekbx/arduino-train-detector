@@ -18,23 +18,26 @@
 #include <DigiKeyboard.h>
 
 #define clearMemory false
-#define serialEnabled false
+#define serialEnabled true
+#define usesFakeSensor true
 
 #define second 1000
 #define hour 60 * 60 * 1000
 #define ledPin 1
 #define sensorPin 2
 #define readOnlySwitch 0
-#define threadDelay 50                                  // Main loop delay
-#define blinkInterval 60                                // Led blink interval in seconds
-#define eventsDelay (second / threadDelay) * 60         // Delay between events, 10 seconds
-#define counterIncreaseRatio (second / threadDelay) * 1 // How many ticks are needed to increase counter by one second
+#define eventThreadDelay 20     // Event loop delay
+#define blinkInterval 60        // Led blink interval in seconds
+#define eventsDelay 30          // Delay between events, 60 seconds
+#define counterIncreaseRatio 1  // How many ticks are needed to increase counter by one second
 
 #define secondsCounterAddress 0   // Seconds counter address
 #define eventIndexAddress 4       // Address of event index
 
-long secondsCounter = 0;
-int timer = 0;
+unsigned long secondsCounter = 0;
+unsigned long timer = 0;
+unsigned long previousMillis = 0;
+unsigned long previousEventMillis = 0;
 
 int memorySize = 0;             // Size of the board EEPROM
 int eventAddress = 8;           // Initial addres of the first event
@@ -45,8 +48,8 @@ boolean isReadOnly = false;
 boolean hasEvent = false;
 int eventTime = 0;
 
-void setup()
-{
+void setup() {
+  
   pinMode(readOnlySwitch, INPUT);
   pinMode(sensorPin, INPUT);
   pinMode(ledPin, OUTPUT);
@@ -59,7 +62,7 @@ void setup()
   memorySize = EEPROM.length();
 
   initializeEventAddress();
-  initialzieSecondsCounter();
+  initializeSecondsCounter();
 
   if (serialEnabled) {
     DigiKeyboard.delay(1000);
@@ -72,6 +75,9 @@ void setup()
       printStatus();
     }
   }
+
+  // Turn on status led at start
+  digitalWrite(ledPin, HIGH);
 }
 
 void initializeEventAddress() {
@@ -82,7 +88,7 @@ void initializeEventAddress() {
   }
 }
 
-void initialzieSecondsCounter() {
+void initializeSecondsCounter() {
   secondsCounter = readLong(secondsCounterAddress);
   if (secondsCounter <= 0) {
     writeLong(secondsCounterAddress, 0);
@@ -101,8 +107,7 @@ void printStatus() {
   printEEPROM();
 }
 
-void loop()
-{
+void loop() {
   if (isReadOnly) {
     if (serialEnabled) {
       DigiKeyboard.println("READ ONLY MODE");
@@ -121,12 +126,27 @@ void loop()
     return;
   }
 
+  unsigned long currentMillis = millis();
+  
+  if (currentMillis - previousMillis >= second) {
+    previousMillis = millis();
+    increaseSeconds();
+    handleStatusLed();
+    
+    if (hasEvent) {
+      eventTime++;
+      if (eventTime > eventsDelay) {
+        hasEvent = false;
+      }
+    }
+  }
+  
+  if (currentMillis - previousEventMillis >= eventThreadDelay) {
+    previousEventMillis = millis();
+    handleSensor();
+  }
 
-  handleStatusLed();
-  handleSensor();
-  handleTimer();
-
-  delay(threadDelay);
+  delay(1);
 }
 
 boolean isMemoryFull() {
@@ -134,7 +154,7 @@ boolean isMemoryFull() {
 }
 
 void handleSensor() {
-  if (!hasEvent && digitalRead(sensorPin) == LOW) {
+  if (!hasEvent && digitalRead(sensorPin) == (usesFakeSensor ? HIGH : LOW)) {
     hasEvent = true;
     eventTime = 0;
 
@@ -153,30 +173,17 @@ void handleSensor() {
       DigiKeyboard.print(secondsCounter);
     }
   }
-
-  if (hasEvent) {
-    eventTime++;
-    if (eventTime > eventsDelay) {
-      hasEvent = false;
-    }
-  }
 }
 
-void handleTimer() {
+void increaseSeconds() {
+  secondsCounter++;
 
-  timer++;
-
-  if (timer >= counterIncreaseRatio) {
-    timer = 0;
-    secondsCounter++;
-
-    if (serialEnabled) {
-      DigiKeyboard.print("Timestamp: ");
-      DigiKeyboard.println(secondsCounter);
-    }
-
-    writeLong(secondsCounterAddress, secondsCounter);
+  if (serialEnabled) {
+    DigiKeyboard.print("Timestamp: ");
+    DigiKeyboard.println(secondsCounter);
   }
+
+  writeLong(secondsCounterAddress, secondsCounter);
 }
 
 void handleStatusLed() {
