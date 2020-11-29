@@ -18,8 +18,8 @@
 #include <DigiKeyboard.h>
 
 #define clearMemory false
-#define serialEnabled true
-#define usesFakeSensor true
+#define serialEnabled false
+#define usesFakeSensor false
 
 #define second 1000
 #define hour 60 * 60 * 1000
@@ -49,14 +49,13 @@ boolean hasEvent = false;
 int eventTime = 0;
 
 void setup() {
-  
   pinMode(readOnlySwitch, INPUT);
   pinMode(sensorPin, INPUT);
   pinMode(ledPin, OUTPUT);
 
-  if (clearMemory) {
+  #if clearMemory
     eraseEEPROM();
-  }
+    #endif
 
   EEPROM.begin();
   memorySize = EEPROM.length();
@@ -64,10 +63,10 @@ void setup() {
   initializeEventAddress();
   initializeSecondsCounter();
 
-  if (serialEnabled) {
+  #if serialEnabled
     DigiKeyboard.delay(1000);
     DigiKeyboard.sendKeyStroke(0);
-  }
+    #endif
   
   if (digitalRead(readOnlySwitch) == HIGH) {
     isReadOnly = true;
@@ -97,30 +96,32 @@ void initializeSecondsCounter() {
 }
 
 void printStatus() {
-  DigiKeyboard.println("TRAIN DETECTOR");
-  DigiKeyboard.print("Memory size: ");
-  DigiKeyboard.println(memorySize);
-  DigiKeyboard.print("Actual timestamp: ");
-  DigiKeyboard.println(secondsCounter);
-  DigiKeyboard.print("Actual event address: ");
-  DigiKeyboard.println(eventAddress);
-  printEEPROM();
+  #if serialEnabled
+    DigiKeyboard.println("TRAIN DETECTOR");
+    DigiKeyboard.print("Memory size: ");
+    DigiKeyboard.println(memorySize);
+    DigiKeyboard.print("Actual timestamp: ");
+    DigiKeyboard.println(secondsCounter);
+    DigiKeyboard.print("Actual event address: ");
+    DigiKeyboard.println(eventAddress);
+    printEEPROM();
+    #endif
 }
 
 void loop() {
   if (isReadOnly) {
-    if (serialEnabled) {
+    #if serialEnabled
       DigiKeyboard.println("READ ONLY MODE");
-    }
+      #endif
     digitalWrite(ledPin, HIGH);
     delay(hour);
     return;
   }
 
   if (isMemoryFull()) {
-    if (serialEnabled) {
+    #if serialEnabled
       DigiKeyboard.println("MEMORY IS FULL!");
-    }
+      #endif
     digitalWrite(ledPin, HIGH);
     delay(hour);
     return;
@@ -168,20 +169,20 @@ void handleSensor() {
     // Blink on new event
     digitalWrite(ledPin, HIGH);
 
-    if (serialEnabled) {
+    #if serialEnabled
       DigiKeyboard.print("Event occurred at: ");
       DigiKeyboard.print(secondsCounter);
-    }
+      #endif
   }
 }
 
 void increaseSeconds() {
   secondsCounter++;
 
-  if (serialEnabled) {
+  #if serialEnabled
     DigiKeyboard.print("Timestamp: ");
     DigiKeyboard.println(secondsCounter);
-  }
+    #endif
 
   writeLong(secondsCounterAddress, secondsCounter);
 }
@@ -195,32 +196,35 @@ void handleStatusLed() {
 }
 
 void eraseEEPROM() {
-  for (int i = 0; i < EEPROM.length(); i++) {
-    EEPROM.write(i, 0);
-  }
+  #if clearMemory
+    for (int i = 0; i < EEPROM.length(); i++) {
+      EEPROM.write(i, 0);
+    }
+    #endif
 }
 
 void printEEPROM() {
-  Serial.println("Memory dump:");
-  int zeroCount = 0;
-  for (long i = 0; i < EEPROM.length(); i += 4) {
-    long value = readLong(i);
-    DigiKeyboard.print("[");
-    DigiKeyboard.print(i);
-    DigiKeyboard.print("] = ");
-    DigiKeyboard.println(value);
-
-    if (value == 0 || value == -1) {
-      zeroCount++;
-    } else {
-      zeroCount--;
+  #if serialEnabled
+    int zeroCount = 0;
+    for (long i = 0; i < EEPROM.length(); i += 4) {
+      long value = readLong(i);
+      DigiKeyboard.print("[");
+      DigiKeyboard.print(i);
+      DigiKeyboard.print("] = ");
+      DigiKeyboard.println(value);
+  
+      if (value == 0 || value == -1) {
+        zeroCount++;
+      } else {
+        zeroCount--;
+      }
+  
+      if (zeroCount > 4 /* Long size */) {
+        DigiKeyboard.println("...");
+        break;
+      }
     }
-
-    if (zeroCount > 4 /* Long size */) {
-      DigiKeyboard.println("...");
-      break;
-    }
-  }
+    #endif
 }
 
 void writeLong(long address, long number) {
