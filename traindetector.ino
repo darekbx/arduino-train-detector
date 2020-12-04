@@ -7,29 +7,30 @@
    Events will be saved in board internal EEPROM memory, until is full.
 
    Pinouts:
-   1 - Build in led used to notify state (blinks with 60s interval).
-       - When memory is full or board is in readonly mode, the led is turned permamently on.
-   2 - Sensor pin (Grove SW-420).
-   0 - Readonly switch (when is in HIGHT state, then data is not collected).
+   5 - External led used to notify state (blinks with 60s interval).
+       - When board is in readonly mode, led blikns in 250ms interval.
+       - When memory is full, led blikns in 1000ms interval.
 
+   Sensor uses LIS3DH accelerometer to detect passing train, accelerometer is connected by I2C.
 */
-#define kbd_en_us
+#include <SparkFunLIS3DH.h>
+#include <Wire.h>
 #include <EEPROM.h>
-#include <DigiKeyboard.h>
 
 #define clearMemory false
+#define emulateEEPROM false
 #define serialEnabled false
-#define usesFakeSensor false
+#define isReadOnly false
+
+#define ledPin 5
 
 #define second 1000
 #define hour 60 * 60 * 1000
-#define ledPin 1
-#define sensorPin 2
-#define readOnlySwitch 0
 #define eventThreadDelay 20     // Event loop delay
 #define blinkInterval 60        // Led blink interval in seconds
 #define eventsDelay 30          // Delay between events, 60 seconds
 #define counterIncreaseRatio 1  // How many ticks are needed to increase counter by one second
+#define startDelay 10 * second  // Wait 10 seconds before start collecting data
 
 #define secondsCounterAddress 0   // Seconds counter address
 #define eventIndexAddress 4       // Address of event index
@@ -43,14 +44,14 @@ int memorySize = 0;             // Size of the board EEPROM
 int eventAddress = 8;           // Initial addres of the first event
 int eventAddressStep = 4;       // Event address step
 
-boolean isReadOnly = false;
-
 boolean hasEvent = false;
 int eventTime = 0;
 
+LIS3DH accelerometer(I2C_MODE, 0x18);
+float movementScale = 0.1;
+
 void setup() {
-  pinMode(readOnlySwitch, INPUT);
-  pinMode(sensorPin, INPUT);
+  
   pinMode(ledPin, OUTPUT);
 
   #if clearMemory
@@ -64,19 +65,23 @@ void setup() {
   initializeSecondsCounter();
 
   #if serialEnabled
-    DigiKeyboard.delay(1000);
-    DigiKeyboard.sendKeyStroke(0);
+    Serial.begin(9600);
+    while (!Serial) {
+      ;
+    }
     #endif
   
-  if (digitalRead(readOnlySwitch) == HIGH) {
-    isReadOnly = true;
-    if (serialEnabled) {
-      printStatus();
-    }
-  }
+  accelerometer.settings.accelSampleRate = 50;
+  accelerometer.settings.accelRange = 2;
+  accelerometer.begin();
+  
+  #if isReadOnly
+    printStatus();
+    #endif
 
   // Turn on status led at start
   digitalWrite(ledPin, HIGH);
+  delay(startDelay);
 }
 
 void initializeEventAddress() {
@@ -97,13 +102,13 @@ void initializeSecondsCounter() {
 
 void printStatus() {
   #if serialEnabled
-    DigiKeyboard.println("TRAIN DETECTOR");
-    DigiKeyboard.print("Memory size: ");
-    DigiKeyboard.println(memorySize);
-    DigiKeyboard.print("Actual timestamp: ");
-    DigiKeyboard.println(secondsCounter);
-    DigiKeyboard.print("Actual event address: ");
-    DigiKeyboard.println(eventAddress);
+    Serial.println("TRAIN DETECTOR");
+    Serial.print("Memory size: ");
+    Serial.println(memorySize);
+    Serial.print("Actual timestamp: ");
+    Serial.println(secondsCounter);
+    Serial.print("Actual event address: ");
+    Serial.println(eventAddress);
     printEEPROM();
     #endif
 }
@@ -111,19 +116,23 @@ void printStatus() {
 void loop() {
   if (isReadOnly) {
     #if serialEnabled
-      DigiKeyboard.println("READ ONLY MODE");
+      Serial.println("READ ONLY MODE");
       #endif
     digitalWrite(ledPin, HIGH);
-    delay(hour);
+    delay(250);
+    digitalWrite(ledPin, LOW);
+    delay(250);
     return;
   }
 
   if (isMemoryFull()) {
     #if serialEnabled
-      DigiKeyboard.println("MEMORY IS FULL!");
+      Serial.println("MEMORY IS FULL!");
       #endif
     digitalWrite(ledPin, HIGH);
-    delay(hour);
+    delay(1000);
+    digitalWrite(ledPin, LOW);
+    delay(1000);
     return;
   }
 
@@ -155,7 +164,12 @@ boolean isMemoryFull() {
 }
 
 void handleSensor() {
-  if (!hasEvent && digitalRead(sensorPin) == (usesFakeSensor ? HIGH : LOW)) {
+  float accelerometerX = accelerometer.readFloatAccelX();
+  boolean hasMovement = 
+    (accelerometerX < (-1 - movementScale)) || 
+    (accelerometerX > (-1 + movementScale));
+
+  if (!hasEvent && hasMovement) {
     hasEvent = true;
     eventTime = 0;
 
@@ -170,8 +184,8 @@ void handleSensor() {
     digitalWrite(ledPin, HIGH);
 
     #if serialEnabled
-      DigiKeyboard.print("Event occurred at: ");
-      DigiKeyboard.print(secondsCounter);
+      Serial.print("Event occurred at: ");
+      Serial.print(secondsCounter);
       #endif
   }
 }
@@ -180,8 +194,8 @@ void increaseSeconds() {
   secondsCounter++;
 
   #if serialEnabled
-    DigiKeyboard.print("Timestamp: ");
-    DigiKeyboard.println(secondsCounter);
+    Serial.print("Timestamp: ");
+    Serial.println(secondsCounter);
     #endif
 
   writeLong(secondsCounterAddress, secondsCounter);
@@ -196,6 +210,10 @@ void handleStatusLed() {
 }
 
 void eraseEEPROM() {
+  if (emulateEEPROM) {
+    Serial.println("eraseEEPROM");
+    return;
+  }
   #if clearMemory
     for (int i = 0; i < EEPROM.length(); i++) {
       EEPROM.write(i, 0);
@@ -204,14 +222,18 @@ void eraseEEPROM() {
 }
 
 void printEEPROM() {
+  if (emulateEEPROM) {
+    Serial.println("printEEPROM");
+    return;
+  }
   #if serialEnabled
     int zeroCount = 0;
     for (long i = 0; i < EEPROM.length(); i += 4) {
       long value = readLong(i);
-      DigiKeyboard.print("[");
-      DigiKeyboard.print(i);
-      DigiKeyboard.print("] = ");
-      DigiKeyboard.println(value);
+      Serial.print("[");
+      Serial.print(i);
+      Serial.print("] = ");
+      Serial.println(value);
   
       if (value == 0 || value == -1) {
         zeroCount++;
@@ -220,7 +242,7 @@ void printEEPROM() {
       }
   
       if (zeroCount > 4 /* Long size */) {
-        DigiKeyboard.println("...");
+        Serial.println("...");
         break;
       }
     }
@@ -228,6 +250,15 @@ void printEEPROM() {
 }
 
 void writeLong(long address, long number) {
+  if (emulateEEPROM) {
+    #if serialEnabled
+      Serial.print("Write [");
+      Serial.print(address);
+      Serial.print("] = ");
+      Serial.println(number);
+      #endif
+    return;
+  }
   EEPROM.write(address, (number >> 24) & 0xFF);
   EEPROM.write(address + 1, (number >> 16) & 0xFF);
   EEPROM.write(address + 2, (number >> 8) & 0xFF);
@@ -235,6 +266,13 @@ void writeLong(long address, long number) {
 }
 
 long readLong(long address) {
+  if (emulateEEPROM) {
+    #if serialEnabled
+      Serial.print("Read ");
+      Serial.println(address);
+      #endif
+    return address;
+  }
   return ((long)EEPROM.read(address) << 24) +
          ((long)EEPROM.read(address + 1) << 16) +
          ((long)EEPROM.read(address + 2) << 8) +

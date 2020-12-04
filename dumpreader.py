@@ -19,7 +19,7 @@ def readDump(startDate, dumpFile):
 	date = datetime.strptime(startDate, dateFormat).timetuple()
 	timestamp = time.mktime(date)
 
-	os.system("clear")
+	#os.system("clear")
 	print("Start date: {}".format(startDate))
 
 	with open(dumpFile, "r") as handle:
@@ -49,7 +49,7 @@ def readDump(startDate, dumpFile):
 
 if __name__ == "__main__":
 	print("Enter start date (format: yyyy-MM-dd HH:mm:ss): ")
-	startDate = input() #"2020-11-21 16:48:00"
+	startDate = "2020-11-28 15:01:00"
 	print("\nEnter dump file name: ")
-	dumpFile = input() #"data_start_2020-11-21-16:48:00.dump"
+	dumpFile = "data_real.dump"
 	readDump(startDate, dumpFile)
