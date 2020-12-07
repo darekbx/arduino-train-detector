@@ -117,6 +117,7 @@ void loop() {
   if (isReadOnly) {
     #if serialEnabled
       Serial.println("READ ONLY MODE");
+      delay(hour);
       #endif
     digitalWrite(ledPin, HIGH);
     delay(250);
@@ -128,6 +129,7 @@ void loop() {
   if (isMemoryFull()) {
     #if serialEnabled
       Serial.println("MEMORY IS FULL!");
+      delay(hour);
       #endif
     digitalWrite(ledPin, HIGH);
     delay(1000);
